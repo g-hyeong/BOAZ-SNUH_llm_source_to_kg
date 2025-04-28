@@ -3,12 +3,17 @@
 (예: Neo4j, S3, 파일 시스템)
 """
 
+import os
+from datetime import datetime
+from pathlib import Path
 from typing import Dict, Any, List
 # import boto3 # 필요시 주석 해제
 # from neo4j import GraphDatabase # 필요시 주석 해제
 # from src.common.logging import get_logger # 필요시 주석 해제
 # from src.common import constants # 필요시 주석 해제
 # import json # 필요시 주석 해제
+
+from src.config import settings
 
 # logger = get_logger(__name__)
 
@@ -21,9 +26,10 @@ def get_neo4j_driver() -> Any:
     Returns:
         Neo4j 드라이버 인스턴스
     """
-    # uri = constants.NEO4J_URI
-    # user = constants.NEO4J_USERNAME
-    # password = constants.NEO4J_PASSWORD
+    # config에서 Neo4j 연결 정보 가져오기 (필요시)
+    # uri = settings.neo4j_uri if hasattr(settings, 'neo4j_uri') else None
+    # user = settings.neo4j_user if hasattr(settings, 'neo4j_user') else None
+    # password = settings.neo4j_password if hasattr(settings, 'neo4j_password') else None
     # driver = GraphDatabase.driver(uri, auth=(user, password))
     # return driver
     pass
@@ -82,16 +88,28 @@ def load_dict_from_s3(bucket: str, key: str) -> Dict[str, Any]:
 
 # --- File System Storage --- #
 
-def save_dict_to_file(data: Dict[str, Any], file_path: str) -> None:
+def save_dict_to_file(data: Dict[str, Any], file_path: str = None) -> str:
     """
     딕셔너리 데이터를 JSON 형식으로 로컬 파일 시스템에 저장합니다.
 
     Args:
         data: 저장할 딕셔너리 데이터
-        file_path: 저장할 파일 경로
+        file_path: 저장할 파일 경로 (None인 경우 기본 디렉토리에 저장)
+
+    Returns:
+        저장된 파일의 전체 경로
     """
+    # 파일 경로가 지정되지 않은 경우 설정의 결과 디렉토리 사용
+    if file_path is None:
+        os.makedirs(settings.result_dir, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        file_path = os.path.join(settings.result_dir, f"result_{timestamp}.json")
+    
     # 여기에 파일 쓰기 로직 구현 (json.dump 사용)
-    pass
+    # with open(file_path, 'w', encoding='utf-8') as f:
+    #     json.dump(data, f, ensure_ascii=False, indent=2)
+    
+    return file_path
 
 def load_dict_from_file(file_path: str) -> Dict[str, Any]:
     """

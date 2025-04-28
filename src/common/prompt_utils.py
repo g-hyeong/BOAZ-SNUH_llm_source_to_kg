@@ -3,10 +3,14 @@ Jinja2 템플릿을 로드하고 렌더링하는 유틸리티 함수들을 제�
 """
 
 from typing import Dict, Any
+from pathlib import Path
 # from jinja2 import Environment, FileSystemLoader, select_autoescape # 필요시 주석 해제
 
+from src.config import settings
+
 # Jinja2 환경 설정 (필요시)
-# template_dir = "path/to/your/templates" # 실제 템플릿 디렉토리 경로로 수정
+# 템플릿 디렉토리 경로를 config에서 가져옴
+# template_dir = settings.project_root / "templates"  # 실제 템플릿 디렉토리 경로로 수정
 # env = Environment(
 #     loader=FileSystemLoader(template_dir),
 #     autoescape=select_autoescape(['html', 'xml']) # 필요에 따라 autoescape 설정
