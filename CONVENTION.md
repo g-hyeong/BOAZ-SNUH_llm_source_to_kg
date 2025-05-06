@@ -43,8 +43,8 @@ git commit -m "Feat: 그래프 파서 구현" -m "Refs: #13"
 PR 제목에는 이슈 번호를 명시해야 합니다:
 
 ```
-[Issue: #{issue_number}] {PR_title}
+[#{issue_number}] {PR_title}
 ```
 
 예시:
-- `[Issue: #17] LLM 프롬프트 최적화 구현`
+- `[#17] LLM 프롬프트 최적화 구현`
