@@ -16,7 +16,6 @@ __pycache__/
 
 # 환경 설정
 .env
-.env.*
 
 # Jupyter 노트북 체크포인트
 .ipynb_checkpoints/
@@ -44,3 +43,5 @@ datasets/
 
 .cursorrules
 .cursor
+
+poetry.lock

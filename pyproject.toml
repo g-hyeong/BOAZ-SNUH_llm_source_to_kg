@@ -1,0 +1,14 @@
+[tool.poetry]
+name = "boaz-snuh-llm-source-to-kg"
+version = "0.1.0"
+description = ""
+authors = ["GU-0 <rjsgud5386@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
