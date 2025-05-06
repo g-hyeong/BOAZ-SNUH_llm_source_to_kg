@@ -1,125 +1,255 @@
 """
-추출된 정보 및 생성된 지식 그래프를 저장하고 로드하는 함수들을 제공합니다.
-(예: Neo4j, S3, 파일 시스템)
+지식 그래프 생성 및 저장을 위한 모듈입니다.
 """
 
 import os
+import json
+from typing import Dict, List, Any
 from datetime import datetime
+import uuid
 from pathlib import Path
-from typing import Dict, Any, List
-# import boto3 # 필요시 주석 해제
-# from neo4j import GraphDatabase # 필요시 주석 해제
-# from src.common.logging import get_logger # 필요시 주석 해제
-# from src.common import constants # 필요시 주석 해제
-# import json # 필요시 주석 해제
 
-from src.config import settings
+from src.graph.state import KnowledgeGraphNode, KnowledgeGraphEdge
+from src.common.utils import get_logger, save_json
 
-# logger = get_logger(__name__)
+# 로거 초기화
+logger = get_logger(__name__)
 
-# --- Neo4j Storage --- #
-
-def get_neo4j_driver() -> Any:
+def generate_knowledge_graph(aggregated_results: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Neo4j 데이터베이스 드라이버 인스턴스를 생성하고 반환합니다.
-
-    Returns:
-        Neo4j 드라이버 인스턴스
-    """
-    # config에서 Neo4j 연결 정보 가져오기 (필요시)
-    # uri = settings.neo4j_uri if hasattr(settings, 'neo4j_uri') else None
-    # user = settings.neo4j_user if hasattr(settings, 'neo4j_user') else None
-    # password = settings.neo4j_password if hasattr(settings, 'neo4j_password') else None
-    # driver = GraphDatabase.driver(uri, auth=(user, password))
-    # return driver
-    pass
-
-def save_nodes_to_neo4j(driver: Any, nodes: List[Dict[str, Any]]) -> None:
-    """
-    주어진 노드 데이터를 Neo4j에 저장합니다.
-
-    Args:
-        driver: Neo4j 드라이버 인스턴스
-        nodes: 저장할 노드 데이터 리스트 (각 노드는 속성을 포함한 딕셔너리)
-    """
-    # 여기에 Neo4j 노드 생성 Cypher 쿼리 실행 로직 구현
-    pass
-
-def save_relationships_to_neo4j(driver: Any, relationships: List[Dict[str, Any]]) -> None:
-    """
-    주어진 관계 데이터를 Neo4j에 저장합니다.
-
-    Args:
-        driver: Neo4j 드라이버 인스턴스
-        relationships: 저장할 관계 데이터 리스트 (시작 노드, 끝 노드, 타입, 속성 포함)
-    """
-    # 여기에 Neo4j 관계 생성 Cypher 쿼리 실행 로직 구현
-    pass
-
-# --- S3 Storage --- #
-
-def save_dict_to_s3(data: Dict[str, Any], bucket: str, key: str) -> None:
-    """
-    딕셔너리 데이터를 JSON 형식으로 S3에 저장합니다.
-
-    Args:
-        data: 저장할 딕셔너리 데이터
-        bucket: S3 버킷 이름
-        key: 저장할 객체 키
-    """
-    # 1. 딕셔너리를 JSON 문자열로 변환 (json.dumps)
-    # 2. boto3 S3 클라이언트를 사용하여 문자열 업로드
-    pass
-
-def load_dict_from_s3(bucket: str, key: str) -> Dict[str, Any]:
-    """
-    S3에서 JSON 파일을 로드하여 딕셔너리로 반환합니다.
-
-    Args:
-        bucket: S3 버킷 이름
-        key: 로드할 객체 키
-
-    Returns:
-        로드된 딕셔너리 데이터
-    """
-    # 1. boto3 S3 클라이언트를 사용하여 객체 내용 읽기
-    # 2. JSON 문자열을 딕셔너리로 변환 (json.loads)
-    pass
-
-# --- File System Storage --- #
-
-def save_dict_to_file(data: Dict[str, Any], file_path: str = None) -> str:
-    """
-    딕셔너리 데이터를 JSON 형식으로 로컬 파일 시스템에 저장합니다.
-
-    Args:
-        data: 저장할 딕셔너리 데이터
-        file_path: 저장할 파일 경로 (None인 경우 기본 디렉토리에 저장)
-
-    Returns:
-        저장된 파일의 전체 경로
-    """
-    # 파일 경로가 지정되지 않은 경우 설정의 결과 디렉토리 사용
-    if file_path is None:
-        os.makedirs(settings.result_dir, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        file_path = os.path.join(settings.result_dir, f"result_{timestamp}.json")
+    통합 결과에서 지식 그래프를 생성합니다.
     
-    # 여기에 파일 쓰기 로직 구현 (json.dump 사용)
-    # with open(file_path, 'w', encoding='utf-8') as f:
-    #     json.dump(data, f, ensure_ascii=False, indent=2)
-    
-    return file_path
-
-def load_dict_from_file(file_path: str) -> Dict[str, Any]:
-    """
-    로컬 파일 시스템에서 JSON 파일을 로드하여 딕셔너리로 반환합니다.
-
     Args:
-        file_path: 로드할 파일 경로
-
+        aggregated_results: 통합된 추출 결과
+        
     Returns:
-        로드된 딕셔너리 데이터
+        노드와 엣지로 구성된 지식 그래프
     """
-    # 여기에 파일 읽기 로직 구현 (json.load 사용)
-    pass 
+    logger.info("지식 그래프 생성 시작")
+    
+    nodes = []
+    edges = []
+    
+    # 노드 ID 맵핑 (엔티티 이름 -> ID)
+    entity_id_map = {}
+    
+    # 진단 엔티티 처리
+    if "diagnostic" in aggregated_results and "condition_entities" in aggregated_results["diagnostic"]:
+        condition_entities = aggregated_results["diagnostic"]["condition_entities"]
+        
+        for entity in condition_entities:
+            # 노드 ID 생성
+            entity_name = entity.get("concept_name", "")
+            if not entity_name:
+                continue
+                
+            node_id = f"condition_{str(uuid.uuid4())[:8]}"
+            entity_id_map[entity_name] = node_id
+            
+            # 노드 생성
+            node = KnowledgeGraphNode(
+                id=node_id,
+                label="Condition",
+                properties={
+                    "name": entity_name,
+                    "category": entity.get("condition_category", ""),
+                    "severity": entity.get("severity", ""),
+                    "evidence_level": entity.get("evidence_level", "")
+                }
+            )
+            nodes.append(node)
+    
+    # 약물 엔티티 처리
+    if "drug" in aggregated_results and "drug_entities" in aggregated_results["drug"]:
+        drug_entities = aggregated_results["drug"]["drug_entities"]
+        
+        for entity in drug_entities:
+            # 노드 ID 생성
+            entity_name = entity.get("concept_name", "")
+            if not entity_name:
+                continue
+                
+            node_id = f"drug_{str(uuid.uuid4())[:8]}"
+            entity_id_map[entity_name] = node_id
+            
+            # 노드 생성
+            node = KnowledgeGraphNode(
+                id=node_id,
+                label="Drug",
+                properties={
+                    "name": entity_name,
+                    "drug_class": entity.get("drug_class", ""),
+                    "evidence_level": entity.get("evidence_level", "")
+                }
+            )
+            nodes.append(node)
+            
+            # 용법 정보가 있는 경우 추가 노드 생성
+            if "dosing" in entity and entity["dosing"]:
+                dosing = entity["dosing"]
+                if any(dosing.values()):
+                    dosing_id = f"dosing_{str(uuid.uuid4())[:8]}"
+                    
+                    # 용법 노드
+                    dosing_node = KnowledgeGraphNode(
+                        id=dosing_id,
+                        label="Dosing",
+                        properties={k: v for k, v in dosing.items() if v}
+                    )
+                    nodes.append(dosing_node)
+                    
+                    # 약물-용법 엣지
+                    edge = KnowledgeGraphEdge(
+                        source=node_id,
+                        target=dosing_id,
+                        type="HAS_DOSING"
+                    )
+                    edges.append(edge)
+    
+    # 관계 처리
+    # 진단 관계
+    if "diagnostic" in aggregated_results and "condition_relationships" in aggregated_results["diagnostic"]:
+        relationships = aggregated_results["diagnostic"]["condition_relationships"]
+        
+        for rel in relationships:
+            source_name = rel.get("source_condition", "")
+            target_name = rel.get("target_entity", "")
+            relationship_type = rel.get("relationship_type", "")
+            
+            if not source_name or not target_name or not relationship_type:
+                continue
+            
+            # 소스와 타겟 ID 찾기
+            source_id = entity_id_map.get(source_name)
+            target_id = entity_id_map.get(target_name)
+            
+            if source_id and target_id:
+                edge = KnowledgeGraphEdge(
+                    source=source_id,
+                    target=target_id,
+                    type=relationship_type.upper(),
+                    properties={
+                        "details": rel.get("details", ""),
+                        "certainty": rel.get("certainty", "")
+                    }
+                )
+                edges.append(edge)
+    
+    # 약물 관계
+    if "drug" in aggregated_results and "drug_relationships" in aggregated_results["drug"]:
+        relationships = aggregated_results["drug"]["drug_relationships"]
+        
+        for rel in relationships:
+            source_name = rel.get("source_drug", "")
+            target_name = rel.get("target_entity", "")
+            relationship_type = rel.get("relationship_type", "")
+            
+            if not source_name or not target_name or not relationship_type:
+                continue
+            
+            # 소스와 타겟 ID 찾기
+            source_id = entity_id_map.get(source_name)
+            target_id = entity_id_map.get(target_name)
+            
+            if source_id and target_id:
+                edge = KnowledgeGraphEdge(
+                    source=source_id,
+                    target=target_id,
+                    type=relationship_type.upper(),
+                    properties={
+                        "details": rel.get("details", ""),
+                        "certainty": rel.get("certainty", "")
+                    }
+                )
+                edges.append(edge)
+    
+    logger.info(f"지식 그래프 생성 완료: 노드 {len(nodes)}개, 엣지 {len(edges)}개")
+    
+    return {
+        "nodes": nodes,
+        "edges": edges
+    }
+
+def save_results(results: Dict[str, Any]) -> str:
+    """
+    결과를 파일로 저장합니다.
+    
+    Args:
+        results: 저장할 결과 데이터
+        
+    Returns:
+        저장된 파일 경로
+    """
+    # 결과 저장 디렉토리 생성
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+    
+    # 타임스탬프를 포함한 파일명 생성
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filepath = output_dir / f"kg_results_{timestamp}.json"
+    
+    # 결과 저장
+    save_json(results, str(filepath))
+    
+    logger.info(f"결과 저장 완료: {filepath}")
+    
+    return str(filepath)
+
+def save_to_neo4j(nodes: List[KnowledgeGraphNode], edges: List[KnowledgeGraphEdge]) -> bool:
+    """
+    지식 그래프를 Neo4j 데이터베이스에 저장합니다.
+    이 함수는 Neo4j 데이터베이스가 구성되어 있을 때 사용합니다.
+    
+    Args:
+        nodes: 그래프 노드 목록
+        edges: 그래프 엣지 목록
+        
+    Returns:
+        성공 여부
+    """
+    try:
+        from neo4j import GraphDatabase
+        
+        # Neo4j 설정 - 실제 구현에서는 환경 변수나 설정 파일에서 로드
+        uri = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
+        username = os.environ.get("NEO4J_USER", "neo4j")
+        password = os.environ.get("NEO4J_PASSWORD", "password")
+        
+        # Neo4j 연결
+        driver = GraphDatabase.driver(uri, auth=(username, password))
+        
+        with driver.session() as session:
+            # 노드 생성
+            for node in nodes:
+                properties_str = ", ".join([f"`{k}`: ${k}" for k in node.properties.keys()])
+                query = f"CREATE (n:`{node.label}` {{{properties_str}, id: $id}})"
+                session.run(query, id=node.id, **node.properties)
+            
+            # 엣지 생성
+            for edge in edges:
+                if edge.properties:
+                    properties_str = ", ".join([f"`{k}`: ${k}" for k in edge.properties.keys()])
+                    query = f"""
+                    MATCH (a), (b)
+                    WHERE a.id = $source_id AND b.id = $target_id
+                    CREATE (a)-[r:`{edge.type}` {{{properties_str}}}]->(b)
+                    """
+                    session.run(query, source_id=edge.source, target_id=edge.target, **edge.properties)
+                else:
+                    query = f"""
+                    MATCH (a), (b)
+                    WHERE a.id = $source_id AND b.id = $target_id
+                    CREATE (a)-[r:`{edge.type}`]->(b)
+                    """
+                    session.run(query, source_id=edge.source, target_id=edge.target)
+        
+        driver.close()
+        logger.info(f"Neo4j 저장 완료: 노드 {len(nodes)}개, 엣지 {len(edges)}개")
+        return True
+        
+    except ImportError:
+        logger.error("Neo4j 드라이버가 설치되지 않았습니다.")
+        return False
+    except Exception as e:
+        logger.error(f"Neo4j 저장 중 오류 발생: {str(e)}")
+        return False 

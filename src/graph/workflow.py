@@ -1,179 +1,465 @@
 """
-메인 KG 생성 LangGraph 워크플로우를 정의하고 컴파일합니다.
+LangGraph를 활용한 문서 분석 워크플로우 구현
+
+이 모듈은 LangGraph를 사용하여 진단 및 약물 정보를 추출하는 
+워크플로우를 정의합니다.
 """
 
+import json
+from typing import Dict, List, Any, Annotated, Tuple
+from pathlib import Path
+import time
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, END
-from typing import Dict, Any, Literal
+from langgraph.prebuilt import ToolNode
 
-# 상태 정의 임포트
-from src.graph.state import GraphState
+from common.llm.gemini_llm import GeminiLLM
+from common.logging import get_logger
+from config import settings
+from pydantic_types.graph_state import DiagnosticResults, DrugResults, ValidationResult
+from graph.state import GraphState
 
-# 노드 함수 임포트 (각 기능별 모듈에서)
-from src.loading import s3_loader
-from src.preprocessing import text_processor
-from src.extraction.diagnostic import node_functions as diag_nodes
-from src.extraction.drug import node_functions as drug_nodes
-from src.extraction.manager import orchestrator
-from src.graph.verify.cohort import node_functions as cohort_verify_nodes
-from src.graph.verify.omop_existence import node_functions as omop_verify_nodes
-from src.storage import graph_storage
-# from src.common.logging import get_logger # 필요시 주석 해제
+# 로거 설정
+logger = get_logger("graph_workflow")
 
-# logger = get_logger(__name__)
-
-# --- 노드 래퍼 함수들 (필요시 상태 업데이트 및 로깅 추가) ---
-
-def load_data_node(state: GraphState) -> GraphState:
-    """데이터 로딩 노드 래퍼"""
-    # 예: s3_loader.read_s3_object 호출 및 상태 업데이트
-    pass
-
-def preprocess_text_node(state: GraphState) -> GraphState:
-    """텍스트 전처리 노드 래퍼"""
-    # 예: text_processor.clean_text, text_processor.split_text_into_chunks 호출
-    pass
-
-def determine_extraction_type_node(state: GraphState) -> GraphState:
-    """추출 유형 결정 노드 래퍼"""
-    extraction_type = orchestrator.determine_extraction_type(state)
-    # 상태 업데이트 로직 추가
-    return state # 수정된 상태 반환 필요
-
-def extract_diagnostic_node(state: GraphState) -> GraphState:
-    """진단 정보 추출 노드 래퍼"""
-    state = diag_nodes.extract_diagnostic_entities(state)
-    state = diag_nodes.structure_diagnostic_info(state)
-    state = diag_nodes.validate_diagnostic_extraction(state)
-    return state
-
-def extract_drug_node(state: GraphState) -> GraphState:
-    """약물 정보 추출 노드 래퍼"""
-    state = drug_nodes.extract_drug_entities(state)
-    state = drug_nodes.structure_drug_info(state)
-    state = drug_nodes.validate_drug_extraction(state)
-    return state
-
-def aggregate_results_node(state: GraphState) -> GraphState:
-    """결과 통합 노드 래퍼"""
-    # 예: orchestrator.aggregate_extraction_results 호출
-    pass
-
-def cohort_verification_node(state: GraphState) -> GraphState:
-    """코호트 검증 노드 래퍼"""
-    # 예: cohort_verify_nodes 관련 함수 호출
-    pass
-
-def omop_existence_verification_node(state: GraphState) -> GraphState:
-    """OMOP 존재 검증 노드 래퍼"""
-    # 예: omop_verify_nodes 관련 함수 호출
-    pass
-
-def save_results_node(state: GraphState) -> GraphState:
-    """결과 저장 노드 래퍼"""
-    # 예: graph_storage 관련 함수 호출 (Neo4j, S3 등)
-    pass
-
-# --- 조건부 엣지 함수 --- #
-
-def decide_extraction_path(state: GraphState) -> Literal["extract_diagnostic", "extract_drug", "aggregate"]: 
-    """추출 유형에 따라 다음 노드를 결정합니다."""
-    extraction_type = state.get("extraction_type", "")
-    if extraction_type == "diagnostic":
-        return "extract_diagnostic"
-    elif extraction_type == "drug":
-        return "extract_drug"
-    else: # combined 또는 다른 경우
-        # 필요시 에러 처리 또는 다른 로직 추가
-        return "aggregate" # 예시: 기본적으로 통합 노드로 이동
-
-def check_validation_status(state: GraphState) -> Literal["run_verification", "handle_error", END]:
-    """추출 유효성 검사 결과에 따라 다음 단계를 결정합니다."""
-    status = state.get("extraction_validation_status", "invalid")
-    if status == "valid":
-        return "run_verification" # 검증 단계로 이동
-    elif status == "needs_review":
-        # 필요시 Human-in-the-loop 로직 추가
-        return END # 예시: 검토 필요시 종료
-    else: # invalid
-        return "handle_error" # 오류 처리 노드로 이동
-
-def decide_next_verification(state: GraphState) -> Literal["verify_omop", "save_results", END]:
-    """코호트 검증 후 다음 단계를 결정합니다."""
-    # 예시: 코호트 검증 결과에 따라 분기
-    if state.get("cohort_validation_results", {}).get("status") == "passed":
-        return "verify_omop"
-    else:
-        return END # 예시: 실패 시 종료
-
-# --- 그래프 빌더 --- #
-
-def build_graph():
-    """LangGraph 워크플로우 그래프를 빌드합니다."""
+def create_workflow(llm_config: Dict[str, Any]) -> StateGraph:
+    """
+    LangGraph 워크플로우 생성
+    
+    Args:
+        llm_config: LLM 설정 정보
+        
+    Returns:
+        StateGraph: 설정된 LangGraph 워크플로우
+    """
+    # LLM 인스턴스 생성
+    llm = GeminiLLM(**llm_config)
+    
+    # 워크플로우 그래프 생성
     workflow = StateGraph(GraphState)
+    
+    # 1. 문서 내용 로딩 노드
+    def load_document(state: GraphState) -> GraphState:
+        try:
+            logger.info(f"문서 로딩 시작: {state.input_source}")
+            target_path = Path(state.input_source)
+            
+            if not target_path.exists():
+                raise FileNotFoundError(f"파일을 찾을 수 없습니다: {target_path}")
+            
+            # JSON 파일 로드
+            with open(target_path, 'r', encoding='utf-8') as f:
+                guideline_data = json.load(f)
+            
+            # 제목과 내용 추출
+            title = guideline_data.get('title', '제목 없음')
+            contents = guideline_data.get('contents', '')
+            
+            # contents가 딕셔너리인 경우 문자열로 변환
+            if isinstance(contents, dict):
+                # 딕셔너리의 모든 섹션을 연결
+                content_text = ""
+                for section, text in contents.items():
+                    content_text += f"## {section}\n\n{text}\n\n"
+                contents = content_text
+            
+            # 문서 내용 설정
+            state.document_content = f"# {title}\n\n{contents}"
+            
+            # 간단한 청킹 (실제 구현에서는 더 복잡할 수 있음)
+            chunks = contents.split('\n\n')
+            state.document_chunks = [chunk for chunk in chunks if chunk.strip()]
+            
+            logger.info(f"문서 로딩 완료: 제목=\"{title}\", 청크 수={len(state.document_chunks or [])}")
+            
+            # 현재 단계 업데이트
+            state.current_step = "load_document"
+            return state
+            
+        except Exception as e:
+            logger.error(f"문서 로딩 중 오류 발생: {str(e)}")
+            state.error_message = f"문서 로딩 오류: {str(e)}"
+            return state
+    
+    # 2. 분석 유형 결정 노드
+    def determine_analysis_type(state: GraphState) -> GraphState:
+        try:
+            logger.info("분석 유형 결정 시작")
+            
+            # 문서 내용 확인
+            if not state.document_content or not state.document_chunks:
+                raise ValueError("문서 내용이 없습니다. 먼저 문서를 로드하세요.")
+            
+            # 분석 유형 결정 프롬프트 생성
+            system_prompt = """당신은 의료 가이드라인 분석 전문가입니다. 다음 의료 가이드라인 문서를 분석하여 가장 적합한 분석 유형을 결정하세요.
 
-    # 노드 추가
-    workflow.add_node("load_data", load_data_node)
-    workflow.add_node("preprocess_text", preprocess_text_node)
-    workflow.add_node("determine_extraction_type", determine_extraction_type_node)
-    workflow.add_node("extract_diagnostic", extract_diagnostic_node)
-    workflow.add_node("extract_drug", extract_drug_node)
-    workflow.add_node("aggregate", aggregate_results_node) # 실제 분기 로직 후 필요한 노드
-    workflow.add_node("validate_extraction", lambda state: state) # 유효성 검사 자체는 추출 노드 내에서 수행 가정
-    workflow.add_node("verify_cohort", cohort_verification_node)
-    workflow.add_node("verify_omop", omop_existence_verification_node)
-    workflow.add_node("save_results", save_results_node)
-    workflow.add_node("handle_error", lambda state: print(f"Error: {state.get('error_message')}")) # 간단한 오류 처리 예시
+분석 유형 옵션:
+1. diagnostic - 진단 관련 정보가 주로 포함된 경우
+2. drug - 약물 관련 정보가 주로 포함된 경우
+3. both - 진단과 약물 정보가 모두 중요하게 포함된 경우
 
-    # 엣지 설정
-    workflow.set_entry_point("load_data")
-    workflow.add_edge("load_data", "preprocess_text")
-    workflow.add_edge("preprocess_text", "determine_extraction_type")
+반드시 아래 JSON 형식으로만 응답하세요. 다른 설명은 포함하지 마세요:
+{"analysis_type": "<결정된 유형>", "explanation": "<결정 이유>"}"""
+            
+            # 문서의 처음 부분만 사용 (토큰 제한 고려)
+            document_sample = state.document_content[:10000] + "..."
+            
+            # 단일 프롬프트로 변경
+            prompt = f"{system_prompt}\n\n{document_sample}"
+            
+            # LLM 호출
+            response = llm.chat(prompt)
+            
+            # 응답 로깅
+            logger.info(f"LLM 분석 유형 응답: {response}")
+            
+            # JSON 응답 추출
+            try:
+                # 응답이 문자열, LLMResult 객체, 또는 다른 형태일 수 있으므로 적절히 처리
+                if isinstance(response, str):
+                    response_text = response
+                elif hasattr(response, "response"):
+                    response_text = response.response
+                else:
+                    response_text = str(response)
+                
+                # JSON 블록 추출 시도 (```json ... ``` 형식으로 응답했을 수 있음)
+                if "```json" in response_text and "```" in response_text.split("```json", 1)[1]:
+                    json_str = response_text.split("```json", 1)[1].split("```", 1)[0].strip()
+                    result = json.loads(json_str)
+                elif "{" in response_text and "}" in response_text:
+                    # { } 블록 추출 시도
+                    json_str = response_text[response_text.find("{"):response_text.rfind("}")+1]
+                    result = json.loads(json_str)
+                else:
+                    result = json.loads(response_text)
+                
+                analysis_type = result.get("analysis_type", "both")
+                explanation = result.get("explanation", "")
+                
+                # 유효한 분석 유형 확인
+                if analysis_type not in ["diagnostic", "drug", "both"]:
+                    logger.warning(f"유효하지 않은 분석 유형: {analysis_type}, 기본값 'both'로 설정")
+                    analysis_type = "both"
+                
+                state.analysis_type = analysis_type
+                logger.info(f"분석 유형 결정 완료: {analysis_type} - {explanation}")
+                
+            except json.JSONDecodeError:
+                logger.warning("JSON 파싱 실패, 기본값 'both'로 설정")
+                state.analysis_type = "both"
+            
+            # 현재 단계 업데이트
+            state.current_step = "determine_analysis_type"
+            return state
+            
+        except Exception as e:
+            logger.error(f"분석 유형 결정 중 오류 발생: {str(e)}")
+            state.error_message = f"분석 유형 결정 오류: {str(e)}"
+            return state
+    
+    # 3. 진단 정보 추출 노드
+    def extract_diagnostic_info(state: GraphState) -> GraphState:
+        try:
+            # 분석 유형 확인
+            if state.analysis_type not in ["diagnostic", "both"]:
+                logger.info("진단 정보 추출 건너뜀 (분석 유형이 'drug'임)")
+                return state
+            
+            logger.info("진단 정보 추출 시작")
+            
+            # 프롬프트 생성
+            system_prompt = """의료 가이드라인에서 진단 관련 정보를 추출하세요. 다음 정보를 포함해야 합니다:
+- 질병/상태 엔티티
+- 진단 관계
+- 진단 경로
+- 조건 코호트
 
-    # 추출 유형에 따른 조건부 엣지
-    workflow.add_conditional_edges(
-        "determine_extraction_type",
-        decide_extraction_path,
-        {
-            "extract_diagnostic": "extract_diagnostic",
-            "extract_drug": "extract_drug",
-            "aggregate": "aggregate", # 통합 노드로 가는 경로
-        }
-    )
+JSON 형식으로 응답하세요."""
+            
+            # 단일 프롬프트로 변경
+            prompt = f"{system_prompt}\n\n{state.document_content}"
+            
+            # LLM 호출
+            response = llm.chat(prompt)
+            
+            # JSON 응답 추출 시도
+            try:
+                # 응답이 문자열, LLMResult 객체, 또는 다른 형태일 수 있으므로 적절히 처리
+                if isinstance(response, str):
+                    response_text = response
+                elif hasattr(response, "response"):
+                    response_text = response.response
+                else:
+                    response_text = str(response)
+                
+                diagnostic_json = json.loads(response_text)
+                
+                # DiagnosticResults 모델로 변환
+                diagnostic_results = DiagnosticResults(
+                    condition_entities=diagnostic_json.get("condition_entities", []),
+                    condition_relationships=diagnostic_json.get("condition_relationships", []),
+                    diagnostic_pathways=diagnostic_json.get("diagnostic_pathways", []),
+                    condition_cohorts=diagnostic_json.get("condition_cohorts", []),
+                    detailed_analysis=diagnostic_json.get("detailed_analysis", "")
+                )
+                
+                state.diagnostic_results = diagnostic_results
+                logger.info(f"진단 정보 추출 완료: {len(diagnostic_results.condition_entities)} 엔티티 발견")
+                
+            except (json.JSONDecodeError, Exception) as e:
+                logger.error(f"진단 정보 파싱 오류: {str(e)}")
+                state.error_message = f"진단 정보 추출 오류: {str(e)}"
+            
+            # 현재 단계 업데이트
+            state.current_step = "extract_diagnostic_info"
+            return state
+            
+        except Exception as e:
+            logger.error(f"진단 정보 추출 중 오류 발생: {str(e)}")
+            state.error_message = f"진단 정보 추출 오류: {str(e)}"
+            return state
+    
+    # 4. 약물 정보 추출 노드
+    def extract_drug_info(state: GraphState) -> GraphState:
+        try:
+            # 분석 유형 확인
+            if state.analysis_type not in ["drug", "both"]:
+                logger.info("약물 정보 추출 건너뜀 (분석 유형이 'diagnostic'임)")
+                return state
+            
+            logger.info("약물 정보 추출 시작")
+            
+            # 프롬프트 생성
+            system_prompt = """의료 가이드라인에서 약물 관련 정보를 추출하세요. 다음 정보를 포함해야 합니다:
+- 약물 엔티티
+- 약물 관계
+- 치료 경로
+- 약물 코호트
 
-    # 추출 후 유효성 검사 결과에 따른 분기 (추출 노드에서 validate_extraction 노드로 연결 가정)
-    # 실제로는 각 추출 노드(diagnostic, drug) 또는 통합(aggregate) 노드에서 validate_extraction 엣지로 연결해야 함.
-    # 예시: workflow.add_edge("extract_diagnostic", "validate_extraction")
-    # 예시: workflow.add_edge("extract_drug", "validate_extraction")
-    workflow.add_edge("aggregate", "validate_extraction") # 예시: 통합 후 검사
-
-    workflow.add_conditional_edges(
-        "validate_extraction",
-        check_validation_status,
-        {
-            "run_verification": "verify_cohort", # 유효하면 코호트 검증 시작
-            "handle_error": "handle_error",
-            END: END
-        }
-    )
-
-    # 검증 단계 연결
-    workflow.add_conditional_edges(
-        "verify_cohort",
-        decide_next_verification,
-        {
-            "verify_omop": "verify_omop",
-            END: END
-        }
-    )
-    workflow.add_edge("verify_omop", "save_results") # OMOP 검증 후 결과 저장
-
-    # 종료점 설정
+JSON 형식으로 응답하세요."""
+            
+            # 단일 프롬프트로 변경
+            prompt = f"{system_prompt}\n\n{state.document_content}"
+            
+            # LLM 호출
+            response = llm.chat(prompt)
+            
+            # JSON 응답 추출 시도
+            try:
+                # 응답이 문자열, LLMResult 객체, 또는 다른 형태일 수 있으므로 적절히 처리
+                if isinstance(response, str):
+                    response_text = response
+                elif hasattr(response, "response"):
+                    response_text = response.response
+                else:
+                    response_text = str(response)
+                
+                drug_json = json.loads(response_text)
+                
+                # DrugResults 모델로 변환
+                drug_results = DrugResults(
+                    drug_entities=drug_json.get("drug_entities", []),
+                    drug_relationships=drug_json.get("drug_relationships", []),
+                    treatment_pathways=drug_json.get("treatment_pathways", []),
+                    medication_cohorts=drug_json.get("medication_cohorts", []),
+                    detailed_analysis=drug_json.get("detailed_analysis", "")
+                )
+                
+                state.drug_results = drug_results
+                logger.info(f"약물 정보 추출 완료: {len(drug_results.drug_entities)} 엔티티 발견")
+                
+            except (json.JSONDecodeError, Exception) as e:
+                logger.error(f"약물 정보 파싱 오류: {str(e)}")
+                state.error_message = f"약물 정보 추출 오류: {str(e)}"
+            
+            # 현재 단계 업데이트
+            state.current_step = "extract_drug_info"
+            return state
+            
+        except Exception as e:
+            logger.error(f"약물 정보 추출 중 오류 발생: {str(e)}")
+            state.error_message = f"약물 정보 추출 오류: {str(e)}"
+            return state
+    
+    # 5. 결과 집계 노드
+    def aggregate_results(state: GraphState) -> GraphState:
+        try:
+            logger.info("결과 집계 시작")
+            
+            # 진단 및 약물 결과 확인
+            has_diagnostic = state.diagnostic_results is not None
+            has_drug = state.drug_results is not None
+            
+            if not has_diagnostic and not has_drug:
+                logger.warning("진단 및 약물 추출 결과가 모두 없습니다.")
+                state.error_message = "진단 및 약물 추출 결과가 모두 없습니다."
+                return state
+            
+            # 집계된 결과 생성
+            aggregated_results = {
+                "analysis_type": state.analysis_type,
+                "timestamp": time.time(),
+                "source": Path(state.input_source).name
+            }
+            
+            # 진단 정보 추가
+            if has_diagnostic:
+                diagnostic_info = {
+                    "entity_count": len(state.diagnostic_results.condition_entities),
+                    "relationship_count": len(state.diagnostic_results.condition_relationships),
+                    "pathway_count": len(state.diagnostic_results.diagnostic_pathways),
+                    "cohort_count": len(state.diagnostic_results.condition_cohorts)
+                }
+                aggregated_results["diagnostic_info"] = diagnostic_info
+            
+            # 약물 정보 추가
+            if has_drug:
+                drug_info = {
+                    "entity_count": len(state.drug_results.drug_entities),
+                    "relationship_count": len(state.drug_results.drug_relationships),
+                    "pathway_count": len(state.drug_results.treatment_pathways),
+                    "cohort_count": len(state.drug_results.medication_cohorts)
+                }
+                aggregated_results["drug_info"] = drug_info
+            
+            # 결과 저장
+            state.aggregated_results = aggregated_results
+            logger.info(f"결과 집계 완료: {aggregated_results}")
+            
+            # 현재 단계 업데이트
+            state.current_step = "aggregate_results"
+            return state
+            
+        except Exception as e:
+            logger.error(f"결과 집계 중 오류 발생: {str(e)}")
+            state.error_message = f"결과 집계 오류: {str(e)}"
+            return state
+    
+    # 6. 결과 저장 노드
+    def save_results(state: GraphState) -> GraphState:
+        try:
+            logger.info("결과 저장 시작")
+            
+            # 결과 확인
+            if not state.aggregated_results:
+                logger.warning("저장할 집계 결과가 없습니다.")
+                state.error_message = "저장할 집계 결과가 없습니다."
+                return state
+            
+            # 결과 디렉토리 생성
+            results_dir = settings.result_dir
+            results_dir.mkdir(parents=True, exist_ok=True)
+            
+            # 파일명 생성
+            source_name = Path(state.input_source).stem
+            timestamp = int(time.time())
+            output_file = results_dir / f"{source_name}_results_{timestamp}.json"
+            
+            # 최종 결과 생성
+            final_results = {
+                "metadata": {
+                    "source": state.input_source,
+                    "timestamp": timestamp,
+                    "analysis_type": state.analysis_type
+                },
+                "aggregated_results": state.aggregated_results
+            }
+            
+            # 진단 결과 추가
+            if state.diagnostic_results:
+                final_results["diagnostic_results"] = state.diagnostic_results.model_dump()
+            
+            # 약물 결과 추가
+            if state.drug_results:
+                final_results["drug_results"] = state.drug_results.model_dump()
+            
+            # 오류 메시지 추가
+            if state.error_message:
+                final_results["error"] = state.error_message
+            
+            # 결과 저장
+            with open(output_file, 'w', encoding='utf-8') as f:
+                json.dump(final_results, f, ensure_ascii=False, indent=2)
+            
+            logger.info(f"결과 저장 완료: {output_file}")
+            
+            # 결과 저장 정보 추가
+            state.total_results = final_results
+            
+            # 현재 단계 업데이트
+            state.current_step = "save_results"
+            return state
+            
+        except Exception as e:
+            logger.error(f"결과 저장 중 오류 발생: {str(e)}")
+            state.error_message = f"결과 저장 오류: {str(e)}"
+            return state
+    
+    # 워크플로우 노드 등록
+    workflow.add_node("load_document", load_document)
+    workflow.add_node("determine_analysis_type", determine_analysis_type)
+    workflow.add_node("extract_diagnostic_info", extract_diagnostic_info)
+    workflow.add_node("extract_drug_info", extract_drug_info)
+    workflow.add_node("aggregate_results", aggregate_results)
+    workflow.add_node("save_results", save_results)
+    
+    # 엣지 연결
+    workflow.add_edge("load_document", "determine_analysis_type")
+    workflow.add_edge("determine_analysis_type", "extract_diagnostic_info")
+    workflow.add_edge("extract_diagnostic_info", "extract_drug_info")
+    workflow.add_edge("extract_drug_info", "aggregate_results")
+    workflow.add_edge("aggregate_results", "save_results")
     workflow.add_edge("save_results", END)
-    workflow.add_edge("handle_error", END)
+    
+    # 시작점 설정
+    workflow.set_entry_point("load_document")
+    
+    # 워크플로우 컴파일
+    return workflow.compile()
 
-    # 그래프 컴파일
-    app = workflow.compile()
-    return app
-
-# 그래프 인스턴스 생성 (실행 시점에 호출)
-# compiled_graph = build_graph() 
+def process_source(
+    source_path: str, 
+    llm_config: Dict[str, Any]
+) -> Dict[str, Any]:
+    """
+    특정 소스 파일을 처리하는 함수
+    
+    Args:
+        source_path: 소스 파일 경로
+        llm_config: LLM 설정
+        
+    Returns:
+        Dict[str, Any]: 처리 결과
+    """
+    # 워크플로우 생성
+    workflow = create_workflow(llm_config)
+    
+    # 초기 상태 설정
+    initial_state = GraphState(input_source=source_path)
+    
+    # 워크플로우 실행
+    logger.info(f"워크플로우 실행 시작: {source_path}")
+    try:
+        final_state = workflow.invoke(initial_state)
+        logger.info(f"워크플로우 실행 완료: {source_path}")
+        
+        # 에러 확인 (AddableValuesDict에서 error_message 속성 접근 방식 수정)
+        error_message = final_state.get("error_message") if hasattr(final_state, "get") else None
+        
+        # 결과 반환
+        return {
+            "success": error_message is None,
+            "error": error_message,
+            "results": final_state.get("total_results") if hasattr(final_state, "get") else None
+        }
+        
+    except Exception as e:
+        logger.error(f"워크플로우 실행 중 예외 발생: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e),
+            "results": None
+        } 

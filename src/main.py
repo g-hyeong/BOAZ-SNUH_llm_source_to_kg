@@ -2,13 +2,17 @@ import sys
 import os
 import json
 from pathlib import Path
-from typing import List
+from typing import List, Dict, Any
 
-# 설정 모듈 임포트 (src/config.py로 변경)
-from config import settings
+# 패키지 경로 추가
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+# 설정 모듈 임포트
+from src.config import settings
 # load_source 모듈에서 get_target_sources 함수와 SELECTED_TARGET_SOURCES 임포트
 from extraction.manager.load_source import get_target_sources, SELECTED_TARGET_SOURCES
-from extraction.manager.node import ManagerNode
+# LangGraph 워크플로우 임포트
+from graph.workflow import process_source
 # 로거 가져오기
 from common.logging import get_logger
 
@@ -45,9 +49,6 @@ def main():
         logger.info(f"처리할 파일 목록 ({len(target_sources)}개):")
         logger.info(f"{target_sources}")
         
-        # 여기에 실제 파일 처리 코드 구현
-        # ...
-
         # 모델명이 지정되지 않았을 때 settings에서 기본값 사용
         logger.info(f"기본 모델 키: {settings.default_llm_model}")
         logger.info(f"사용 가능한 모델 키: {list(settings.gemini_models.keys())}")
@@ -57,6 +58,7 @@ def main():
         if not model_name:
             raise ValueError("모델명이 지정되지 않았습니다.")
             
+        # LLM 설정
         llm_config = {
             "model": model_name,
             "temperature": 0.1,
@@ -65,26 +67,37 @@ def main():
         
         logger.info(f"LLM 설정: {llm_config}")
         
-        try:
-            manager = ManagerNode(
-                llm_type="gemini",
-                llm_config=llm_config,
-                command=command,
-                targets=target_sources
-            )
-            logger.info("ManagerNode 초기화 성공")
+        # LangGraph 워크플로우로 각 소스 파일 처리
+        results = []
+        
+        for source_path in target_sources:
+            logger.info(f"소스 파일 처리 시작: {source_path}")
             
-            results = []
-            for result in manager.run():
-                results.append(result)
+            # LangGraph 워크플로우 실행
+            result = process_source(
+                source_path=str(source_path),
+                llm_config=llm_config
+            )
+            
+            if result["success"]:
+                logger.info(f"소스 파일 처리 완료: {source_path}")
+            else:
+                logger.error(f"소스 파일 처리 실패: {source_path} - {result['error']}")
+            
+            results.append(result)
         
-            # 결과 저장
-            results_dir = settings.result_dir
-            os.makedirs(results_dir, exist_ok=True)
+        # 전체 결과 요약
+        successful = sum(1 for r in results if r["success"])
+        failed = len(results) - successful
         
-        except Exception as e:
-            logger.error(f"ManagerNode 실행 중 오류가 발생했습니다: {e}")
-            sys.exit(1)
+        logger.info(f"모든 처리 완료: 성공={successful}, 실패={failed}")
+        
+        # 결과 파일 경로 출력
+        result_files = list(settings.result_dir.glob("*.json"))
+        if result_files:
+            logger.info(f"결과 파일이 다음 위치에 저장되었습니다: {settings.result_dir}")
+            for file in result_files[-len(results):]:  # 가장 최근 파일들만 표시
+                logger.info(f" - {file.name}")
 
     except FileNotFoundError as e:
         logger.error(f"오류: {e}")
