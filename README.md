@@ -1,6 +1,6 @@
 # BOAZ-SNUH LLM Source to Knowledge Graph
 
-BOAZ-SNUH 프로젝트의 LLM 기반 소스 코드에서 지식 그래프를 추출하는 도구입니다.
+이 프로젝트에 대한 협업 규칙은 [CONVENTION.md](./CONVENTION.md)를 참조하세요.
 
 ## 프로젝트 개요
 
@@ -57,40 +57,36 @@ python -m src.llm_source_to_kg
 
 ```
 .
-├── pyproject.toml    # Poetry 프로젝트 설정
-├── src/              # 소스 코드
-│   └── llm_source_to_kg/
-│       ├── graph/    # 그래프 관련 모듈
-│       ├── llm/      # LLM 관련 모듈
-│       ├── schema/   # 스키마 정의
-│       └── utils/    # 유틸리티 함수
-└── datasets/         # 데이터셋 디렉토리
+├── pyproject.toml         # Poetry 프로젝트 설정 파일
+├── CONVENTION.md          # 협업 규칙 및 컨벤션 문서
+├── prompts/               # LLM 프롬프트 템플릿 디렉토리
+│   └── sample.txt         # 샘플 프롬프트 파일
+├── src/                   # 소스 코드
+│   └── llm_source_to_kg/  # 메인 패키지
+│       ├── __init__.py    # 패키지 초기화 파일
+│       ├── config.py      # 프로젝트 설정 파일
+│       ├── graph/         # 그래프 관련 모듈
+│       │   ├── orchestrator.py  # 그래프 생성 오케스트레이터
+│       │   ├── cohort_graph/    # 코호트 그래프 관련 모듈
+│       │   │   ├── __init__.py
+│       │   │   ├── orchestrator.py  # 코호트 그래프 생성 오케스트레이터
+│       │   │   ├── state.py         # 코호트 그래프 상태 관리
+│       │   │   ├── utils.py         # 코호트 그래프 유틸리티
+│       │   │   └── nodes/           # 코호트 그래프 노드 관련 클래스
+│       │   ├── analysis_graph/   # 분석 그래프 관련 모듈
+│       │   │   ├── __init__.py
+│       │   │   ├── orchestrator.py  # 분석 그래프 생성 오케스트레이터
+│       │   │   ├── state.py         # 분석 그래프 상태 관리
+│       │   │   └── nodes/           # 분석 그래프 노드 관련 클래스
+│       ├── llm/           # LLM 관련 모듈
+│       │   ├── common_llm_interface.py  # LLM 공통 인터페이스
+│       │   └── gemini.py              # Gemini 모델 구현
+│       ├── schema/        # 스키마 정의
+│       │   └── types.py   # 타입 정의
+│       └── utils/         # 유틸리티 함수
+│           └── util.py    # 유틸리티 구현
+└── datasets/              # 데이터셋 디렉토리
+    ├── omop/              # OMOP 데이터셋
+    ├── guideline/         # 가이드라인 데이터셋
+    └── csv_to_db.py       # CSV를 데이터베이스로 변환하는 스크립트
 ```
-
-## 추가 설정 (필요한 경우)
-
-### 환경 변수 설정
-
-프로젝트에 필요한 API 키나 환경 변수가 있다면 `.env` 파일을 생성하여 설정하세요:
-
-```bash
-# .env 파일 생성
-touch .env
-
-# 예시 환경 변수
-# OPENAI_API_KEY=your_api_key_here
-```
-
-### 추가 패키지 설치
-
-필요한 추가 패키지가 있다면 다음과 같이 설치할 수 있습니다:
-
-```bash
-poetry add 패키지명
-```
-
-## 문제 해결
-
-- **Poetry 명령어가 인식되지 않는 경우**: PATH에 Poetry가 추가되었는지 확인하세요.
-- **의존성 충돌**: `poetry update` 명령어로 의존성을 업데이트해 보세요.
-- **가상 환경 문제**: `poetry env info`로 현재 가상 환경 정보를 확인하세요. 
