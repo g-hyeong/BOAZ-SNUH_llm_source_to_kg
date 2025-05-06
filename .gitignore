@@ -44,3 +44,5 @@ datasets/
 
 .cursorrules
 .cursor
+
+poetry.lock
