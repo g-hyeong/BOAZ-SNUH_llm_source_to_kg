@@ -1,0 +1,46 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+
+# VSCode 등 에디터 설정
+.vscode/
+.idea/
+
+# OS 관련
+.DS_Store
+
+# uv virtualenv (기본: .venv)
+.venv/
+3.11.7/
+
+# 환경 설정
+.env
+.env.*
+
+# Jupyter 노트북 체크포인트
+.ipynb_checkpoints/
+
+*.log
+.env
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.pyw
+*.pyz
+
+
+_DS_Store
+
+outputs/
+datasets/
+logs/
+results/
+lib/
+
+s3_files/
+datasets/
+
+.cursorrules
+.cursor
