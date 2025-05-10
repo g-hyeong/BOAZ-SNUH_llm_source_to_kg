@@ -1,0 +1,42 @@
+name: 작업 이슈
+description: 작업 이슈를 생성하기 위한 템플릿입니다.
+title: "title"
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 작업 이슈 생성을 위한 템플릿입니다. 아래 항목들을 작성해주세요.
+
+  - type: textarea
+    id: work-files
+    attributes:
+      label: 📝 작업 파일
+      description: 작업이 필요한 파일들을 나열해주세요
+      placeholder: 예시) src/main.py, src/utils/helper.py
+    validations:
+      required: true
+
+  - type: textarea
+    id: work-content
+    attributes:
+      label: 🔍 작업 내용
+      description: 작업해야 할 내용을 자세히 설명해주세요
+      placeholder: |
+        작업 내용에 대한 상세 설명을 작성해주세요
+        
+        ### 체크리스트
+        - [ ] 1
+        - [ ] 2
+    validations:
+      required: true
+
+
+  - type: textarea
+    id: additional-info
+    attributes:
+      label: 📌 추가 정보
+      description: 추가로 필요한 정보가 있다면 작성해주세요
+      placeholder: 추가 정보가 있으면 작성해주세요
+    validations:
+      required: false
