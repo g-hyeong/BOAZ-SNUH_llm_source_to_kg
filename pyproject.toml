@@ -16,6 +16,7 @@ pydantic = "^2.5.2"
 python-dotenv = "^1.0.0"
 typing-extensions = "^4.8.0"
 langgraph = "^0.4.3"
+boto3 = "^1.38.13"
 
 [tool.poetry.scripts]
 test-gemini = "llm_source_to_kg.test.test_gemini:main"
