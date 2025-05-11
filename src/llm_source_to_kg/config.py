@@ -9,6 +9,15 @@ class Config:
     GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
     if not GEMINI_API_KEY:
         raise ValueError("GEMINI_API_KEY is not set")
+    
+
+    
+    # AWS S3 관련 설정
+    AWS_PROFILE = os.getenv("AWS_PROFILE", "boaz-snuh")  # 기본값 boaz-snuh 프로필    
+    if not AWS_PROFILE:
+        raise ValueError("AWS_PROFILE is not set")
+    AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-2")  # 기본값 서울 리전
+    AWS_S3_BUCKET = os.getenv("AWS_S3_BUCKET", "source-to-kg")  # 기본 버킷명 (필요시 사용)
 
 
 # 전역 설정 인스턴스 생성
