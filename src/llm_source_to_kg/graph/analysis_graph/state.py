@@ -1,4 +1,4 @@
-from schema.state import *
+from llm_source_to_kg.schema.state import *
 from typing import List, Dict, Any, Annotated
 import operator
 
