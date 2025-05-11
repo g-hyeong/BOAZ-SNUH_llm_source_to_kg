@@ -1,5 +1,5 @@
-from src.llm_source_to_kg.graph.cohort_graph.orchestrator import build_cohort_graph
-from src.llm_source_to_kg.graph.analysis_graph.orchestrator import build_analysis_graph
+from llm_source_to_kg.graph.cohort_graph.orchestrator import build_cohort_graph
+from llm_source_to_kg.graph.analysis_graph.orchestrator import build_analysis_graph
 
 def run_full_workflow(input_state):
     # 1. Cohort 단계 실행
