@@ -4,9 +4,18 @@ version = "0.1.0"
 description = ""
 authors = ["GU-0 <rjsgud5386@gmail.com>"]
 readme = "README.md"
+packages = [
+    { include = "llm_source_to_kg", from = "src" }
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
+
+google-generativeai = "^0.3.2"
+pydantic = "^2.5.2"
+python-dotenv = "^1.0.0"
+typing-extensions = "^4.8.0"
+langgraph = "^0.4.3"
 
 
 [build-system]
