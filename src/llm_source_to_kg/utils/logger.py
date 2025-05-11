@@ -19,7 +19,7 @@ class Logger:
     CRITICAL = logging.CRITICAL
     
     # 기본 로그 포맷
-    DEFAULT_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
+    DEFAULT_FORMAT = "%(asctime)s %(levelname)s: %(message)s"
     
     # 현재 로그 디렉터리 (모든 로거가 공유)
     _current_log_dir = None

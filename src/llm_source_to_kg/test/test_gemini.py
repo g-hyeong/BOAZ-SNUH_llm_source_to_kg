@@ -1,3 +1,5 @@
+# poetry run test-gemini
+
 import asyncio
 import sys
 import os
