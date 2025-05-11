@@ -1,10 +1,6 @@
-<<<<<<< HEAD
-from src.llm_source_to_kg.schema.types import *
+
 from typing import Dict, Any, Annotated
-=======
-from schema.state import *
-from typing import List, Dict, Any, Annotated
->>>>>>> 1ec1faa (Chore: src를 프로젝트 루트 디렉터리로 설정. import 구문 간단하게 변경)
+from llm_source_to_kg.schema.state import *
 import operator
 
 

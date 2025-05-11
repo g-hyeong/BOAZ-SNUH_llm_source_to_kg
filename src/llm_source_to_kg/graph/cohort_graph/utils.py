@@ -2,7 +2,7 @@
 코호트 그래프에서 사용되는 유틸리티 함수
 """
 from typing import Literal
-from graph.cohort_graph.state import CohortGraphState
+from llm_source_to_kg.graph.cohort_graph.state import CohortGraphState
 
 # 최대 재시도 횟수
 RETRY_COUNT = 3
