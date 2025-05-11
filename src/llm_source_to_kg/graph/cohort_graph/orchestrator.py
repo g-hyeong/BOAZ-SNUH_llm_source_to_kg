@@ -1,9 +1,9 @@
 # Orchestrator for LangGraph
 from langgraph.graph import END, StateGraph
 
-from src.llm_source_to_kg.graph.cohort_graph.state import CohortGraphState
-from src.llm_source_to_kg.graph.cohort_graph.utils import route_after_validation
-from src.llm_source_to_kg.graph.cohort_graph.nodes import (
+from llm_source_to_kg.graph.cohort_graph.state import CohortGraphState
+from llm_source_to_kg.graph.cohort_graph.utils import route_after_validation
+from llm_source_to_kg.graph.cohort_graph.nodes import (
     load_source_content,
     extract_cohorts,
     validate_cohort,
