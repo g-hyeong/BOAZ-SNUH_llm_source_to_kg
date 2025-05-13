@@ -40,7 +40,7 @@ class LLMConfig(BaseModel):
     """LLM 설정 구조 정의"""
     model: str
     temperature: float = 0.1
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = 8192
     top_p: float = 0.4
     stream: bool = False
     tools: Optional[List[Dict[str, Any]]] = None
