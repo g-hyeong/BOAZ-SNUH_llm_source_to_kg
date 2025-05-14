@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 from typing import Dict, Any
 
+
 def load_prompt_template(template_name: str) -> str:
     """프롬프트 템플릿 파일을 로드합니다."""
     current_dir = Path(__file__).parent

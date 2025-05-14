@@ -3,7 +3,6 @@ from typing import Dict, Any, Annotated
 from llm_source_to_kg.schema.state import *
 import operator
 
-
 class AnalysisGraphState(TypedDict):
     context: Annotated[str, operator.add]
     question: Annotated[str, "user question"]
