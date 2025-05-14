@@ -1,5 +1,5 @@
 from src.llm_source_to_kg.schema.types import *
-from typing import List, Dict, Any, Annotated
+from typing import Dict, Any, Annotated
 import operator
 
 
