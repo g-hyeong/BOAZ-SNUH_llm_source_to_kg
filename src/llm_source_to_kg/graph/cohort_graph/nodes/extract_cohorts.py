@@ -2,7 +2,7 @@ import asyncio
 from llm_source_to_kg.graph.cohort_graph.state import CohortGraphState
 from llm_source_to_kg.utils.llm_util import get_llm
 from llm_source_to_kg.utils.logger import get_logger
-from llm_source_to_kg.schema.llm import LLMMessage
+from llm_source_to_kg.schema.llm import LLMMessage, LLMConfig
 from json_repair import repair_json
 
 async def extract_cohorts(state: CohortGraphState) -> CohortGraphState:
@@ -12,6 +12,12 @@ async def extract_cohorts(state: CohortGraphState) -> CohortGraphState:
     doc_logger = get_logger(name=state["source_reference_number"])
 
     llm = get_llm(llm_type="gemini", model="gemini-2.0-flash")
+
+    llm_config = LLMConfig(
+        temperature=0.2,
+        top_p=0.95,
+        max_output_tokens=8192
+    )
     prompt = open("../prompts/extract_cohort_prompt.txt", "r").read()
 
     messages = [
@@ -19,7 +25,7 @@ async def extract_cohorts(state: CohortGraphState) -> CohortGraphState:
         LLMMessage(role="user", content=state["document"])
     ]
 
-    response = await llm.chat_llm(messages)
+    response = await llm.chat_llm(messages, llm_config)
 
     cohort_result = repair_json(response.content)
 
