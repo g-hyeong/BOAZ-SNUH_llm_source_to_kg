@@ -1,5 +1,7 @@
 # BOAZ-SNUH LLM Source to Knowledge Graph
 
+> [SNOMED-BOAZ | LLM-Source-To_KG](https://github.com/SNOMED-BOAZ/LLM-Source-To-KG) repository 변경됐습니다.
+
 이 프로젝트에 대한 협업 규칙은 [CONVENTION.md](./CONVENTION.md)를 참조하세요.
 
 ## 프로젝트 개요
